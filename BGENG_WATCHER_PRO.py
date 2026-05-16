@@ -111,20 +111,15 @@ EMAIL_REGEX = r'^[\w\.-]+@[\w\.-]+\.\w+$'
 # =========================================================
 
 def banner():
-
-    print(Fore.BLUE + Fore.BLACK + Fore.MAGENTA + r"""
-
+    print(Fore.MAGENTA + r"""
         ██████╗  ██████╗ ███████╗███╗   ██╗ ██████╗
         ██╔══██╗██╔════╝ ██╔════╝████╗  ██║██╔════╝
         ██████╔╝██║  ███╗█████╗  ██╔██╗ ██║██║  ███╗
         ██╔══██╗██║   ██║██╔══╝  ██║╚██╗██║██║   ██║
         ██████╔╝╚██████╔╝███████╗██║ ╚████║╚██████╔╝
-        ╚═════╝  ╚═════╝ ╚══════╝╚═╝  ╚═══╝ ╚═════╝
-
-                        BGENGWATCHER
-       Sembunyikan jejakmu, biarkan targetmu yang bersuara.
-
-""")
+        ╚═════╝  ╚═════╝ ╚══════╝╚═╝  ╚═══╝ ╚═════╝""")
+    print(Fore.CYAN + f"{'BGENGWATCHER':^60}")
+    print(Fore.WHITE + Style.BRIGHT + f"{'Sembunyikan jejakmu, biarkan targetmu yang bersuara.':^60}\n")
 
 # =========================================================
 # DATABASE
