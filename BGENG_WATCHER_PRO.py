@@ -408,104 +408,189 @@ def phone_intel(number):
         print(Fore.RED + str(e))
 
 # =========================================================
-# EMAIL INTEL
+# ULTRA EMAIL INTEL
 # =========================================================
-
-def smtp_banner(mx_host):
-
-    try:
-
-        server = socket.socket()
-
-        server.settimeout(5)
-
-        server.connect((mx_host, 25))
-
-        banner = server.recv(1024).decode()
-
-        server.close()
-
-        return banner.strip()
-
-    except:
-
-        return "Unavailable"
 
 def email_intel(email):
 
-    print(Fore.YELLOW + f"\n[+] Email Intelligence: {email}\n")
+    print(Fore.YELLOW + f"\n[+] Ultra Email Intelligence: {email}\n")
 
     if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
 
         print(Fore.RED + "[-] Invalid email format.")
-
         return
 
     domain = email.split("@")[1]
 
+    username = email.split("@")[0]
+
     result = {
 
-        "email": email,
+        "target": email,
+        "username": username,
         "domain": domain,
+
         "dns_records": {},
         "security": {},
-        "osint": {}
+        "reputation": {},
+        "osint": {},
+        "metadata": {}
     }
 
     try:
 
-        # MX
+        # =================================================
+        # MX RECORDS
+        # =================================================
+
         try:
 
             mx_records = dns.resolver.resolve(domain, "MX")
 
-            result["dns_records"]["MX"] = [
-                str(x.exchange)
-                for x in mx_records
-            ]
+            mx_hosts = []
+
+            for mx in mx_records:
+
+                mx_hosts.append(str(mx.exchange))
+
+            result["dns_records"]["MX"] = mx_hosts
 
         except:
 
             result["dns_records"]["MX"] = []
 
+        # =================================================
         # SPF
+        # =================================================
+
         try:
 
             txt_records = dns.resolver.resolve(domain, "TXT")
 
-            result["security"]["SPF"] = [
+            spf = []
 
-                str(x)
+            for txt in txt_records:
 
-                for x in txt_records
+                record = str(txt)
 
-                if "v=spf1" in str(x).lower()
-            ]
+                if "v=spf1" in record.lower():
+
+                    spf.append(record)
+
+            result["security"]["SPF"] = spf
 
         except:
 
             result["security"]["SPF"] = []
 
+        # =================================================
         # DMARC
+        # =================================================
+
         try:
 
-            dmarc = dns.resolver.resolve(
-                f"_dmarc.{domain}",
+            dmarc_domain = f"_dmarc.{domain}"
+
+            dmarc_records = dns.resolver.resolve(
+                dmarc_domain,
                 "TXT"
             )
 
             result["security"]["DMARC"] = [
+
                 str(x)
-                for x in dmarc
+
+                for x in dmarc_records
             ]
 
         except:
 
             result["security"]["DMARC"] = []
 
-        # Gravatar
+        # =================================================
+        # DKIM
+        # =================================================
+
+        selectors = [
+
+            "default",
+            "google",
+            "selector1",
+            "selector2"
+        ]
+
+        dkim_found = []
+
+        for selector in selectors:
+
+            try:
+
+                dkim_domain = f"{selector}._domainkey.{domain}"
+
+                dkim = dns.resolver.resolve(
+                    dkim_domain,
+                    "TXT"
+                )
+
+                dkim_found.append({
+
+                    "selector": selector,
+                    "record": [str(x) for x in dkim]
+                })
+
+            except:
+                pass
+
+        result["security"]["DKIM"] = dkim_found
+
+        # =================================================
+        # DOMAIN IP
+        # =================================================
+
+        try:
+
+            ip = socket.gethostbyname(domain)
+
+            result["metadata"]["domain_ip"] = ip
+
+        except:
+
+            result["metadata"]["domain_ip"] = None
+
+        # =================================================
+        # SMTP CHECK
+        # =================================================
+
+        smtp_results = {}
+
+        for mx in result["dns_records"]["MX"]:
+
+            try:
+
+                server = socket.socket()
+
+                server.settimeout(5)
+
+                server.connect((mx.rstrip("."), 25))
+
+                banner = server.recv(1024).decode()
+
+                smtp_results[mx] = banner.strip()
+
+                server.close()
+
+            except:
+
+                smtp_results[mx] = "Unavailable"
+
+        result["security"]["SMTP_Banner"] = smtp_results
+
+        # =================================================
+        # GRAVATAR
+        # =================================================
+
         email_hash = hashlib.md5(
-            email.lower().encode()
+            email.lower().encode("utf-8")
         ).hexdigest()
 
         result["osint"]["gravatar"] = {
@@ -517,16 +602,70 @@ def email_intel(email):
                 f"https://www.gravatar.com/avatar/{email_hash}?d=404"
         }
 
+        # =================================================
+        # SOCIAL USERNAME
+        # =================================================
+
+        result["osint"]["possible_usernames"] = [
+
+            username,
+            username.replace(".", ""),
+            username.replace("_", ""),
+            username.lower()
+        ]
+
+        # =================================================
+        # GOOGLE DORKS
+        # =================================================
+
+        result["osint"]["dorks"] = [
+
+            f'"{email}"',
+
+            f'site:pastebin.com "{email}"',
+
+            f'site:github.com "{email}"',
+
+            f'site:linkedin.com "{email}"',
+
+            f'intext:"{email}" password',
+
+            f'"{email}" filetype:pdf',
+
+            f'"{email}" ext:sql'
+        ]
+
+        # =================================================
+        # RISK ANALYSIS
+        # =================================================
+
+        risk = "LOW"
+
+        if len(result["security"]["SPF"]) == 0:
+            risk = "MEDIUM"
+
+        if len(result["security"]["DMARC"]) == 0:
+            risk = "HIGH"
+
+        result["reputation"]["risk_level"] = risk
+
+        # =================================================
+        # FINAL OUTPUT
+        # =================================================
+
         print(json.dumps(result, indent=4))
 
-        save_report("email_intel", result)
+        save_report("ultra_email_intel", result)
 
-        log_result(email, "email_intel", result)
+        try:
+            log_result(email, "ultra_email_intel", result)
+        except:
+            pass
 
     except Exception as e:
 
-        print(Fore.RED + str(e))
-
+        print(Fore.RED + f"[!] Error: {str(e)}")
+        
 # =========================================================
 # WHOIS
 # =========================================================
