@@ -114,15 +114,15 @@ def banner():
 
     print(Fore.MAGENTA + r"""
 
-██████╗  ██████╗ ███████╗███╗   ██╗ ██████╗
-██╔══██╗██╔════╝ ██╔════╝████╗  ██║██╔════╝
-██████╔╝██║  ███╗█████╗  ██╔██╗ ██║██║  ███╗
-██╔══██╗██║   ██║██╔══╝  ██║╚██╗██║██║   ██║
-██████╔╝╚██████╔╝███████╗██║ ╚████║╚██████╔╝
-╚═════╝  ╚═════╝ ╚══════╝╚═╝  ╚═══╝ ╚═════╝
+        ██████╗  ██████╗ ███████╗███╗   ██╗ ██████╗
+        ██╔══██╗██╔════╝ ██╔════╝████╗  ██║██╔════╝
+        ██████╔╝██║  ███╗█████╗  ██╔██╗ ██║██║  ███╗
+        ██╔══██╗██║   ██║██╔══╝  ██║╚██╗██║██║   ██║
+        ██████╔╝╚██████╔╝███████╗██║ ╚████║╚██████╔╝
+        ╚═════╝  ╚═════╝ ╚══════╝╚═╝  ╚═══╝ ╚═════╝
 
-        BGENG WATCHER
-   ADVANCED DEFENSIVE OSINT SUITE
+                        BGENGWATCHER
+       Sembunyikan jejakmu, biarkan targetmu yang bersuara.
 
 """)
 
@@ -1088,19 +1088,19 @@ async def main():
 
         print(Fore.MAGENTA + """
 
-[1] Username Scan
-[2] Phone Intelligence
-[3] Email Intelligence
-[4] WHOIS Lookup
-[5] DNS Enumeration
-[6] Website Analyzer
-[7] SSL Information
-[8] Subdomain Enumeration
-[9] Port Scanner
-[10] robots.txt Analyzer
-[11] sitemap.xml Analyzer
-
-[0] Exit
+    [1] Username Scan
+    [2] Phone Intelligence
+    [3] Email Intelligence
+    [4] WHOIS Lookup
+    [5] DNS Enumeration
+    [6] Website Analyzer
+    [7] SSL Information
+    [8] Subdomain Enumeration
+    [9] Port Scanner
+    [10] robots.txt Analyzer
+    [11] sitemap.xml Analyzer
+    
+    [0] Exit
 
 """)
 
