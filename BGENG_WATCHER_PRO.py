@@ -411,13 +411,15 @@ def phone_intel(number):
 # ADVANCED EMAIL FOOTPRINT INTEL
 # =========================================================
 
-FOOTPRINT_PLATFORMS = {
+EMAIL_REGEX = r'^[\w\.-]+@[\w\.-]+\.\w+$'
+
+EMAIL_SERVICES = {
+
+    "Instagram":
+        "https://www.instagram.com/{}/",
 
     "GitHub":
         "https://github.com/{}",
-
-    "Instagram":
-        "https://instagram.com/{}",
 
     "TwitterX":
         "https://x.com/{}",
@@ -431,142 +433,62 @@ FOOTPRINT_PLATFORMS = {
     "Pinterest":
         "https://pinterest.com/{}",
 
-    "GitLab":
-        "https://gitlab.com/{}",
-
-    "Medium":
-        "https://medium.com/@{}",
-
-    "Steam":
-        "https://steamcommunity.com/id/{}",
-
-    "Twitch":
-        "https://twitch.tv/{}",
-
-    "Facebook":
-        "https://facebook.com/{}",
-
-    "LinkedIn":
-        "https://linkedin.com/in/{}",
+    "Spotify":
+        "https://open.spotify.com/user/{}",
 
     "Patreon":
         "https://patreon.com/{}",
 
-    "SoundCloud":
-        "https://soundcloud.com/{}",
+    "GitLab":
+        "https://gitlab.com/{}",
 
-    "Vimeo":
-        "https://vimeo.com/{}"
+    "Medium":
+        "https://medium.com/@{}"
 }
 
+DISPOSABLE_DOMAINS = [
+
+    "mailinator.com",
+    "10minutemail.com",
+    "guerrillamail.com",
+    "tempmail.com",
+    "trashmail.com"
+]
+
 # =========================================================
-# PLATFORM CHECKER
+# SOCIAL CORRELATION
 # =========================================================
 
-async def platform_check(session, site, url, semaphore):
+async def check_platform(session, site, username):
 
-    async with semaphore:
+    try:
 
-        try:
+        url = EMAIL_SERVICES[site].format(username)
 
-            headers = {
+        async with session.get(
+            url,
+            timeout=10
+        ) as response:
 
-                "User-Agent":
-                    random.choice(USER_AGENTS),
-
-                "Accept":
-                    "text/html,application/xhtml+xml",
-
-                "Accept-Language":
-                    "en-US,en;q=0.9"
-            }
-
-            async with session.get(
-
-                url,
-                headers=headers,
-                timeout=12,
-                allow_redirects=True
-
-            ) as response:
-
-                status = response.status
-
-                if status == 404:
-
-                    return {
-
-                        "platform": site,
-                        "url": url,
-                        "found": False,
-                        "status": 404
-                    }
-
-                if status == 200:
-
-                    text = await response.text()
-
-                    bad_patterns = [
-
-                        "page not found",
-                        "user not found",
-                        "this account doesn't exist",
-                        "couldn't find",
-                        "sorry, this page isn't available",
-                        "not found"
-                    ]
-
-                    if any(
-                        x in text.lower()
-                        for x in bad_patterns
-                    ):
-
-                        return {
-
-                            "platform": site,
-                            "url": url,
-                            "found": False,
-                            "status": "Soft404"
-                        }
-
-                    return {
-
-                        "platform": site,
-                        "url": url,
-                        "found": True,
-                        "status": 200
-                    }
+            if response.status == 200:
 
                 return {
-
-                    "platform": site,
+                    "site": site,
                     "url": url,
-                    "found": False,
-                    "status": status
+                    "found": True
                 }
 
-        except asyncio.TimeoutError:
+    except:
+        pass
 
-            return {
-
-                "platform": site,
-                "url": url,
-                "found": False,
-                "status": "Timeout"
-            }
-
-        except Exception as e:
-
-            return {
-
-                "platform": site,
-                "url": url,
-                "found": False,
-                "status": str(e)
-            }
+    return {
+        "site": site,
+        "url": None,
+        "found": False
+    }
 
 # =========================================================
-# MAIN EMAIL INTEL
+# EMAIL INTEL
 # =========================================================
 
 async def email_intel(email):
@@ -576,31 +498,35 @@ async def email_intel(email):
         f"\n[+] ULTRA EMAIL INTELLIGENCE: {email}\n"
     )
 
-    if not re.match(
-        r"[^@]+@[^@]+\.[^@]+",
-        email
-    ):
+    if not re.match(EMAIL_REGEX, email):
 
-        print(Fore.RED + "[-] Invalid email format")
+        print(
+            Fore.RED +
+            "[-] Invalid email format"
+        )
 
         return
 
     username = email.split("@")[0]
-
     domain = email.split("@")[1]
 
     result = {
 
         "target": email,
+
         "username": username,
+
         "domain": domain,
 
         "dns_records": {},
+
         "security": {},
+
         "metadata": {},
+
         "osint": {},
-        "footprint": {},
-        "risk_assessment": {}
+
+        "intelligence": {}
     }
 
     # =====================================================
@@ -609,16 +535,13 @@ async def email_intel(email):
 
     try:
 
-        mx_records = dns.resolver.resolve(
-            domain,
-            "MX"
-        )
+        mx = dns.resolver.resolve(domain, "MX")
 
         result["dns_records"]["MX"] = [
 
             str(x.exchange)
 
-            for x in mx_records
+            for x in mx
         ]
 
     except:
@@ -631,20 +554,16 @@ async def email_intel(email):
 
     try:
 
-        txt_records = dns.resolver.resolve(
-            domain,
-            "TXT"
-        )
+        txt = dns.resolver.resolve(domain, "TXT")
 
-        spf = []
+        spf = [
 
-        for txt in txt_records:
+            str(x)
 
-            record = str(txt)
+            for x in txt
 
-            if "v=spf1" in record.lower():
-
-                spf.append(record)
+            if "spf" in str(x).lower()
+        ]
 
         result["security"]["SPF"] = spf
 
@@ -658,10 +577,8 @@ async def email_intel(email):
 
     try:
 
-        dmarc_domain = f"_dmarc.{domain}"
-
-        dmarc_records = dns.resolver.resolve(
-            dmarc_domain,
+        dmarc = dns.resolver.resolve(
+            f"_dmarc.{domain}",
             "TXT"
         )
 
@@ -669,7 +586,7 @@ async def email_intel(email):
 
             str(x)
 
-            for x in dmarc_records
+            for x in dmarc
         ]
 
     except:
@@ -677,44 +594,54 @@ async def email_intel(email):
         result["security"]["DMARC"] = []
 
     # =====================================================
-    # DKIM ENUM
+    # DKIM
     # =====================================================
 
-    selectors = [
+    try:
 
-        "default",
-        "google",
-        "selector1",
-        "selector2"
-    ]
+        dkim = dns.resolver.resolve(
+            f"default._domainkey.{domain}",
+            "TXT"
+        )
 
-    dkim_found = []
+        result["security"]["DKIM"] = [
 
-    for selector in selectors:
+            str(x)
+
+            for x in dkim
+        ]
+
+    except:
+
+        result["security"]["DKIM"] = []
+
+    # =====================================================
+    # SMTP BANNER
+    # =====================================================
+
+    smtp_data = {}
+
+    for mx in result["dns_records"]["MX"]:
 
         try:
 
-            dkim_domain = (
-                f"{selector}._domainkey.{domain}"
+            server = smtplib.SMTP(
+                str(mx),
+                25,
+                timeout=5
             )
 
-            dkim = dns.resolver.resolve(
-                dkim_domain,
-                "TXT"
-            )
+            banner = server.docmd("NOOP")
 
-            dkim_found.append({
+            smtp_data[str(mx)] = str(banner)
 
-                "selector": selector,
+            server.quit()
 
-                "record":
-                    [str(x) for x in dkim]
-            })
+        except Exception as e:
 
-        except:
-            pass
+            smtp_data[str(mx)] = str(e)
 
-    result["security"]["DKIM"] = dkim_found
+    result["security"]["SMTP"] = smtp_data
 
     # =====================================================
     # DOMAIN IP
@@ -731,39 +658,13 @@ async def email_intel(email):
         result["metadata"]["domain_ip"] = None
 
     # =====================================================
-    # SMTP BANNER
-    # =====================================================
-
-    smtp_results = {}
-
-    for mx in result["dns_records"]["MX"]:
-
-        try:
-
-            server = socket.socket()
-
-            server.settimeout(5)
-
-            server.connect((mx.rstrip("."), 25))
-
-            banner = server.recv(1024).decode()
-
-            smtp_results[mx] = banner.strip()
-
-            server.close()
-
-        except:
-
-            smtp_results[mx] = "Unavailable"
-
-    result["security"]["SMTP_Banner"] = smtp_results
-
-    # =====================================================
     # GRAVATAR
     # =====================================================
 
     email_hash = hashlib.md5(
-        email.lower().encode("utf-8")
+
+        email.lower().encode()
+
     ).hexdigest()
 
     result["osint"]["gravatar"] = {
@@ -776,82 +677,72 @@ async def email_intel(email):
     }
 
     # =====================================================
-    # USERNAME MUTATIONS
+    # USERNAME MUTATION
     # =====================================================
 
     mutations = [
 
         username,
-        username.lower(),
-        username.upper(),
+
         username.replace(".", ""),
+
         username.replace("_", ""),
-        username + "123",
+
         username + "01",
+
+        username + "123",
+
         username + "_official",
-        username + "real"
+
+        username + ".real"
     ]
 
-    result["osint"]["mutations"] = mutations
+    result["osint"]["username_mutations"] = mutations
 
     # =====================================================
-    # FOOTPRINT SCAN
+    # SOCIAL CORRELATION
     # =====================================================
-
-    semaphore = asyncio.Semaphore(20)
-
-    connector = aiohttp.TCPConnector(
-        ssl=False,
-        limit=0
-    )
 
     findings = []
 
-    async with aiohttp.ClientSession(
-        connector=connector
-    ) as session:
+    async with aiohttp.ClientSession() as session:
 
         tasks = []
 
-        for mutation in mutations:
+        for site in EMAIL_SERVICES:
 
-            for site, template in FOOTPRINT_PLATFORMS.items():
-
-                url = template.format(mutation)
+            for user in mutations:
 
                 tasks.append(
 
-                    asyncio.create_task(
-
-                        platform_check(
-                            session,
-                            site,
-                            url,
-                            semaphore
-                        )
+                    check_platform(
+                        session,
+                        site,
+                        user
                     )
                 )
 
-        for future in asyncio.as_completed(tasks):
+        responses = await asyncio.gather(*tasks)
 
-            data = await future
+        for r in responses:
 
-            if data["found"]:
+            if r["found"]:
+
+                findings.append(r)
 
                 print(
+
                     Fore.GREEN +
-                    f"[FOUND] {data['platform']} -> {data['url']}"
+                    f"[FOUND] {r['site']} -> {r['url']}"
                 )
 
-                findings.append(data)
-
-    result["footprint"]["profiles_found"] = findings
+    result["osint"]["social_profiles"] = findings
 
     # =====================================================
-    # GOOGLE DORKS
+    # DORKS
     # =====================================================
 
-    result["osint"]["google_dorks"] = [
+    result["osint"]["dorks"] = [
 
         f'"{email}"',
 
@@ -861,26 +752,77 @@ async def email_intel(email):
 
         f'site:linkedin.com "{email}"',
 
+        f'site:facebook.com "{email}"',
+
+        f'site:twitter.com "{email}"',
+
         f'intext:"{email}" password',
+
+        f'intext:"{email}" credential',
 
         f'"{email}" ext:sql',
 
-        f'"{email}" filetype:pdf',
-
-        f'"{email}" filetype:xls'
+        f'"{email}" filetype:pdf'
     ]
 
     # =====================================================
-    # EXPOSURE SCORE
+    # DISPOSABLE DETECTION
     # =====================================================
 
-    exposure_score = len(findings) * 10
+    result["metadata"]["disposable"] = (
 
-    if exposure_score >= 70:
+        domain in DISPOSABLE_DOMAINS
+    )
+
+    # =====================================================
+    # INTELLIGENCE ENGINE
+    # =====================================================
+
+    score = 0
+
+    summary = []
+
+    if findings:
+
+        score += 30
+
+        summary.append(
+            "Public social footprint detected"
+        )
+
+    if len(findings) >= 3:
+
+        score += 20
+
+        summary.append(
+            "Multiple platform correlation"
+        )
+
+    if result["metadata"]["disposable"]:
+
+        score += 40
+
+        summary.append(
+            "Disposable email detected"
+        )
+
+    if len(result["security"]["SPF"]) > 0:
+
+        score += 5
+
+    if len(result["security"]["DMARC"]) > 0:
+
+        score += 5
+
+    if len(result["security"]["DKIM"]) > 0:
+
+        score += 5
+
+    if score >= 70:
 
         risk = "HIGH"
 
-    elif exposure_score >= 40:
+    elif score >= 40:
 
         risk = "MEDIUM"
 
@@ -888,38 +830,66 @@ async def email_intel(email):
 
         risk = "LOW"
 
-    result["risk_assessment"] = {
+    result["intelligence"] = {
 
-        "exposure_score": exposure_score,
-        "risk_level": risk
+        "score": score,
+
+        "risk_level": risk,
+
+        "profiles_found": len(findings),
+
+        "summary": summary
     }
 
     # =====================================================
-    # FINAL OUTPUT
+    # OUTPUT
     # =====================================================
 
     print(
+        Fore.CYAN +
+        "\n[INTELLIGENCE SUMMARY]\n"
+    )
+
+    for s in summary:
+
+        print(
+            Fore.GREEN +
+            f"[+] {s}"
+        )
+
+    print(
+        Fore.YELLOW +
+        f"\n[+] Risk Level : {risk}"
+    )
+
+    print(
+        Fore.YELLOW +
+        f"[+] Score      : {score}"
+    )
+
+    print(
+        Fore.YELLOW +
+        f"[+] Profiles   : {len(findings)}"
+    )
+
+    print(
+        Fore.CYAN +
         json.dumps(
             result,
             indent=4
         )
     )
 
-    try:
-
-        save_report(
-            "ultra_email_intel",
-            result
-        )
-
-    except:
-        pass
+    save_report(
+        "email_intel",
+        result
+    )
 
     try:
 
         log_result(
             email,
-            "ultra_email_intel",
+            "email_intel",
             result
         )
 
