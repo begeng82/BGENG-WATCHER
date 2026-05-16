@@ -112,7 +112,7 @@ EMAIL_REGEX = r'^[\w\.-]+@[\w\.-]+\.\w+$'
 
 def banner():
 
-    print(Fore.MAGENTA + r"""
+    print(Fore.BLUE + Fore.BLACK + Fore.MAGENTA + r"""
 
         ██████╗  ██████╗ ███████╗███╗   ██╗ ██████╗
         ██╔══██╗██╔════╝ ██╔════╝████╗  ██║██╔════╝
@@ -1086,7 +1086,7 @@ async def main():
 
     while True:
 
-        print(Fore.MAGENTA + """
+        print(Fore.BLUE + """
 
     [1] Username Scan
     [2] Phone Intelligence
@@ -1180,3 +1180,5 @@ async def main():
 if __name__ == "__main__":
 
     asyncio.run(main())
+
+    print(Fore.RED + "\n[!] Exiting BGENG WATCHER...\n")
