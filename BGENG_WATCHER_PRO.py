@@ -123,7 +123,7 @@ def banner():
     """)
     
     print(Fore.CYAN + f"{'BGENGWATCHER':^60}")
-    print(Fore.WHITE + Style.BRIGHT + f"{'Sembunyikan jejakmu, biarkan targetmu yang bersuara.':^60}\n")
+    print(Fore.WHITE + Style.BRIGHT + f"{'Sembunyikan jejakmu, biarkan targetmu yang bersuara.':^60}")
     
 # =========================================================
 # DATABASE
