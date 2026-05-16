@@ -9,10 +9,17 @@ import phonenumbers
 import sqlite3
 import json
 import os
+import re
+import hashlib
+import random
 
 from bs4 import BeautifulSoup
 from colorama import Fore, init
-from phonenumbers import geocoder, carrier
+from phonenumbers import geocoder, carrier, timezone
+from phonenumbers.phonenumberutil import (
+    number_type,
+    PhoneNumberType
+)
 from datetime import datetime
 
 init(autoreset=True)
@@ -26,11 +33,25 @@ REPORT_DIR = "reports"
 if not os.path.exists(REPORT_DIR):
     os.makedirs(REPORT_DIR)
 
+USER_AGENTS = [
+
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36",
+
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/123.0.0.0 Safari/537.36",
+
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
+
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/122.0.0.0 Safari/537.36",
+
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Edge/123.0.0.0"
+]
+
 HEADERS = {
-    "User-Agent": "BGENG-WATCHER-PRO"
+    "User-Agent": random.choice(USER_AGENTS)
 }
 
 SOCIALS = {
+
     "GitHub": "https://github.com/{}",
     "Instagram": "https://instagram.com/{}",
     "TikTok": "https://www.tiktok.com/@{}",
@@ -53,13 +74,40 @@ COMMON_PORTS = [
     3389,8080
 ]
 
+PHONE_TYPE_MAP = {
+
+    PhoneNumberType.MOBILE:
+        "Mobile",
+
+    PhoneNumberType.FIXED_LINE:
+        "Fixed Line",
+
+    PhoneNumberType.FIXED_LINE_OR_MOBILE:
+        "Fixed Line or Mobile",
+
+    PhoneNumberType.TOLL_FREE:
+        "Toll Free",
+
+    PhoneNumberType.PREMIUM_RATE:
+        "Premium Rate",
+
+    PhoneNumberType.VOIP:
+        "VOIP",
+
+    PhoneNumberType.PAGER:
+        "Pager",
+
+    PhoneNumberType.UNKNOWN:
+        "Unknown"
+}
+
 # =========================================================
 # BANNER
 # =========================================================
 
 def banner():
 
-    print(Fore.MAGENTA + r"""
+    print(Fore.CYAN + r"""
 
 ██████╗  ██████╗ ███████╗███╗   ██╗ ██████╗
 ██╔══██╗██╔════╝ ██╔════╝████╗  ██║██╔════╝
@@ -68,7 +116,8 @@ def banner():
 ██████╔╝╚██████╔╝███████╗██║ ╚████║╚██████╔╝
 ╚═════╝  ╚═════╝ ╚══════╝╚═╝  ╚═══╝ ╚═════╝
 
-        BGENG WATCHER PRO
+        BGENG WATCHER
+ ADVANCED DEFENSIVE OSINT SUITE
 
 """)
 
@@ -80,10 +129,10 @@ def init_db():
 
     conn = sqlite3.connect("bgengwatcher.db")
 
-    cur = conn.cursor()
+    cursor = conn.cursor()
 
-    cur.execute("""
-    CREATE TABLE IF NOT EXISTS logs(
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         target TEXT,
         module TEXT,
@@ -99,9 +148,9 @@ def log_result(target, module, result):
 
     conn = sqlite3.connect("bgengwatcher.db")
 
-    cur = conn.cursor()
+    cursor = conn.cursor()
 
-    cur.execute("""
+    cursor.execute("""
     INSERT INTO logs(target,module,result,created_at)
     VALUES(?,?,?,?)
     """, (
@@ -115,7 +164,7 @@ def log_result(target, module, result):
     conn.close()
 
 # =========================================================
-# REPORT
+# REPORT SYSTEM
 # =========================================================
 
 def save_report(name, data):
@@ -123,41 +172,91 @@ def save_report(name, data):
     filename = f"{REPORT_DIR}/{name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
 
     with open(filename, "w", encoding="utf-8") as f:
+
         json.dump(data, f, indent=4)
 
     print(Fore.GREEN + f"\n[+] Report saved -> {filename}")
 
 # =========================================================
-# USERNAME SCAN
+# ADVANCED USERNAME SCAN
 # =========================================================
 
-async def check_username(session, site, url):
+async def check_username(session, site, url, semaphore):
 
-    try:
+    async with semaphore:
 
-        async with session.get(url, timeout=10) as response:
+        retries = 2
 
-            text = await response.text()
+        for attempt in range(retries):
 
-            if response.status == 200:
+            try:
 
-                bad_patterns = [
-                    "Page Not Found",
-                    "This account doesn't exist",
-                    "User not found"
-                ]
+                headers = {
 
-                for pattern in bad_patterns:
+                    "User-Agent":
+                        random.choice(USER_AGENTS),
 
-                    if pattern.lower() in text.lower():
-                        return site, url, False
+                    "Accept":
+                        "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 
-                return site, url, True
+                    "Accept-Language":
+                        "en-US,en;q=0.5"
+                }
 
-    except:
-        pass
+                async with session.get(
+                    url,
+                    headers=headers,
+                    timeout=12,
+                    allow_redirects=True
+                ) as response:
 
-    return site, url, False
+                    status = response.status
+
+                    if status == 429:
+
+                        await asyncio.sleep(2)
+
+                        continue
+
+                    if status == 404:
+
+                        return site, url, False, status
+
+                    if status == 200:
+
+                        text = await response.text()
+
+                        bad_patterns = [
+
+                            "page not found",
+                            "this account doesn't exist",
+                            "user not found",
+                            "sorry, nobody on reddit goes by that name",
+                            "could not be found"
+                        ]
+
+                        if any(
+                            pattern in text.lower()
+                            for pattern in bad_patterns
+                        ):
+
+                            return site, url, False, "Soft 404"
+
+                        return site, url, True, status
+
+                    return site, url, False, status
+
+            except asyncio.TimeoutError:
+
+                if attempt == retries - 1:
+
+                    return site, url, False, "Timeout"
+
+            except Exception:
+
+                return site, url, False, "Error"
+
+        return site, url, False, "Failed"
 
 async def username_scan(username):
 
@@ -165,10 +264,14 @@ async def username_scan(username):
 
     results = {}
 
-    connector = aiohttp.TCPConnector(limit=20)
+    semaphore = asyncio.Semaphore(15)
+
+    connector = aiohttp.TCPConnector(
+        limit=0,
+        ssl=False
+    )
 
     async with aiohttp.ClientSession(
-        headers=HEADERS,
         connector=connector
     ) as session:
 
@@ -179,22 +282,39 @@ async def username_scan(username):
             url = template.format(username)
 
             tasks.append(
-                check_username(session, site, url)
+                asyncio.create_task(
+                    check_username(
+                        session,
+                        site,
+                        url,
+                        semaphore
+                    )
+                )
             )
 
-        responses = await asyncio.gather(*tasks)
+        for future in asyncio.as_completed(tasks):
 
-        for site, url, found in responses:
+            site, url, found, status = await future
 
             if found:
 
-                print(Fore.GREEN + f"[FOUND] {site} -> {url}")
+                print(
+                    Fore.GREEN +
+                    f"[FOUND] {site:<15} -> {url}"
+                )
 
-                results[site] = url
+                results[site] = {
+
+                    "url": url,
+                    "status": status
+                }
 
             else:
 
-                print(Fore.RED + f"[MISS] {site}")
+                print(
+                    Fore.RED +
+                    f"[MISS]  {site:<15} -> {status}"
+                )
 
     save_report(username, results)
 
@@ -206,36 +326,82 @@ async def username_scan(username):
 
 def phone_intel(number):
 
-    print(Fore.YELLOW + "\n[+] Phone Intelligence\n")
+    print(Fore.YELLOW + f"\n[+] Phone Intelligence: {number}\n")
 
     try:
 
         parsed = phonenumbers.parse(number)
 
+        if not phonenumbers.is_valid_number(parsed):
+
+            print(Fore.RED + "[-] Invalid phone number.")
+
+            return
+
         result = {
 
-            "valid":
-                phonenumbers.is_valid_number(parsed),
+            "validation": {
 
-            "possible":
-                phonenumbers.is_possible_number(parsed),
+                "valid":
+                    phonenumbers.is_valid_number(parsed),
 
-            "international":
-                phonenumbers.format_number(
-                    parsed,
-                    phonenumbers.PhoneNumberFormat.INTERNATIONAL
-                ),
+                "possible":
+                    phonenumbers.is_possible_number(parsed)
+            },
 
-            "country":
-                geocoder.description_for_number(parsed, "en"),
+            "formats": {
 
-            "carrier":
-                carrier.name_for_number(parsed, "en")
+                "international":
+                    phonenumbers.format_number(
+                        parsed,
+                        phonenumbers.PhoneNumberFormat.INTERNATIONAL
+                    ),
+
+                "national":
+                    phonenumbers.format_number(
+                        parsed,
+                        phonenumbers.PhoneNumberFormat.NATIONAL
+                    ),
+
+                "e164":
+                    phonenumbers.format_number(
+                        parsed,
+                        phonenumbers.PhoneNumberFormat.E164
+                    )
+            },
+
+            "location_data": {
+
+                "country":
+                    geocoder.description_for_number(
+                        parsed,
+                        "en"
+                    ),
+
+                "carrier":
+                    carrier.name_for_number(
+                        parsed,
+                        "en"
+                    ),
+
+                "timezone":
+                    list(
+                        timezone.time_zones_for_number(parsed)
+                    ),
+
+                "line_type":
+                    PHONE_TYPE_MAP.get(
+                        number_type(parsed),
+                        "Unknown"
+                    )
+            }
         }
 
         print(json.dumps(result, indent=4))
 
-        save_report("phoneintel", result)
+        save_report("phone_intel", result)
+
+        log_result(number, "phone_intel", result)
 
     except Exception as e:
 
@@ -245,56 +411,121 @@ def phone_intel(number):
 # EMAIL INTEL
 # =========================================================
 
-def email_intel(email):
-
-    print(Fore.YELLOW + "\n[+] Email Intelligence\n")
+def smtp_banner(mx_host):
 
     try:
 
-        domain = email.split("@")[1]
+        server = socket.socket()
 
-        mx = dns.resolver.resolve(domain, "MX")
+        server.settimeout(5)
 
-        result = {
-            "email": email,
-            "domain": domain,
-            "mx_records": [str(x.exchange) for x in mx]
+        server.connect((mx_host, 25))
+
+        banner = server.recv(1024).decode()
+
+        server.close()
+
+        return banner.strip()
+
+    except:
+
+        return "Unavailable"
+
+def email_intel(email):
+
+    print(Fore.YELLOW + f"\n[+] Email Intelligence: {email}\n")
+
+    if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+
+        print(Fore.RED + "[-] Invalid email format.")
+
+        return
+
+    domain = email.split("@")[1]
+
+    result = {
+
+        "email": email,
+        "domain": domain,
+        "dns_records": {},
+        "security": {},
+        "osint": {}
+    }
+
+    try:
+
+        # MX
+        try:
+
+            mx_records = dns.resolver.resolve(domain, "MX")
+
+            result["dns_records"]["MX"] = [
+                str(x.exchange)
+                for x in mx_records
+            ]
+
+        except:
+
+            result["dns_records"]["MX"] = []
+
+        # SPF
+        try:
+
+            txt_records = dns.resolver.resolve(domain, "TXT")
+
+            result["security"]["SPF"] = [
+
+                str(x)
+
+                for x in txt_records
+
+                if "v=spf1" in str(x).lower()
+            ]
+
+        except:
+
+            result["security"]["SPF"] = []
+
+        # DMARC
+        try:
+
+            dmarc = dns.resolver.resolve(
+                f"_dmarc.{domain}",
+                "TXT"
+            )
+
+            result["security"]["DMARC"] = [
+                str(x)
+                for x in dmarc
+            ]
+
+        except:
+
+            result["security"]["DMARC"] = []
+
+        # Gravatar
+        email_hash = hashlib.md5(
+            email.lower().encode()
+        ).hexdigest()
+
+        result["osint"]["gravatar"] = {
+
+            "profile":
+                f"https://en.gravatar.com/{email_hash}.json",
+
+            "avatar":
+                f"https://www.gravatar.com/avatar/{email_hash}?d=404"
         }
 
         print(json.dumps(result, indent=4))
 
-        save_report("emailintel", result)
+        save_report("email_intel", result)
+
+        log_result(email, "email_intel", result)
 
     except Exception as e:
 
         print(Fore.RED + str(e))
-
-# =========================================================
-# DNS ENUM
-# =========================================================
-
-def dns_enum(domain):
-
-    print(Fore.YELLOW + "\n[+] DNS Enumeration\n")
-
-    records = ["A","MX","TXT","NS"]
-
-    result = {}
-
-    for record in records:
-
-        try:
-
-            answers = dns.resolver.resolve(domain, record)
-
-            result[record] = [str(x) for x in answers]
-
-        except:
-            pass
-
-    print(json.dumps(result, indent=4))
-
-    save_report("dnsenum", result)
 
 # =========================================================
 # WHOIS
@@ -309,6 +540,7 @@ def whois_lookup(domain):
         data = whois.whois(domain)
 
         result = {
+
             "domain": domain,
             "registrar": str(data.registrar),
             "creation_date": str(data.creation_date),
@@ -326,25 +558,66 @@ def whois_lookup(domain):
         print(Fore.RED + str(e))
 
 # =========================================================
-# WEB ANALYZER
+# DNS ENUM
+# =========================================================
+
+def dns_enum(domain):
+
+    print(Fore.YELLOW + "\n[+] DNS Enumeration\n")
+
+    records = [
+        "A","AAAA","MX",
+        "TXT","NS","CNAME"
+    ]
+
+    result = {}
+
+    for record in records:
+
+        try:
+
+            answers = dns.resolver.resolve(domain, record)
+
+            result[record] = [
+                str(x)
+                for x in answers
+            ]
+
+        except:
+            pass
+
+    print(json.dumps(result, indent=4))
+
+    save_report("dnsenum", result)
+
+# =========================================================
+# WEBSITE ANALYZER
 # =========================================================
 
 def web_analyzer(url):
 
-    print(Fore.YELLOW + "\n[+] Web Analyzer\n")
+    print(Fore.YELLOW + "\n[+] Website Analyzer\n")
 
     try:
 
-        r = requests.get(url, headers=HEADERS, timeout=10)
+        r = requests.get(
+            url,
+            headers=HEADERS,
+            timeout=10
+        )
 
-        soup = BeautifulSoup(r.text, "html.parser")
+        soup = BeautifulSoup(
+            r.text,
+            "html.parser"
+        )
 
         result = {
 
             "url": url,
 
             "title":
-                soup.title.string if soup.title else None,
+                soup.title.string
+                if soup.title else None,
 
             "server":
                 r.headers.get("Server"),
@@ -352,16 +625,25 @@ def web_analyzer(url):
             "powered_by":
                 r.headers.get("X-Powered-By"),
 
+            "content_type":
+                r.headers.get("Content-Type"),
+
             "security_headers": {
 
                 "CSP":
-                    r.headers.get("Content-Security-Policy"),
+                    r.headers.get(
+                        "Content-Security-Policy"
+                    ),
 
                 "HSTS":
-                    r.headers.get("Strict-Transport-Security"),
+                    r.headers.get(
+                        "Strict-Transport-Security"
+                    ),
 
                 "XFO":
-                    r.headers.get("X-Frame-Options")
+                    r.headers.get(
+                        "X-Frame-Options"
+                    )
             }
         }
 
@@ -396,7 +678,13 @@ def ssl_info(domain):
 
             cert = s.getpeercert()
 
-            print(json.dumps(cert, indent=4, default=str))
+            print(
+                json.dumps(
+                    cert,
+                    indent=4,
+                    default=str
+                )
+            )
 
             save_report("ssl", cert)
 
@@ -413,8 +701,9 @@ def subdomain_enum(domain):
     print(Fore.YELLOW + "\n[+] Subdomain Enumeration\n")
 
     subdomains = [
-        "www","mail","ftp","api",
-        "admin","dev","test"
+        "www","mail","ftp",
+        "api","admin","dev",
+        "test"
     ]
 
     found = []
@@ -427,9 +716,13 @@ def subdomain_enum(domain):
 
             ip = socket.gethostbyname(target)
 
-            print(Fore.GREEN + f"[FOUND] {target} -> {ip}")
+            print(
+                Fore.GREEN +
+                f"[FOUND] {target} -> {ip}"
+            )
 
             found.append({
+
                 "subdomain": target,
                 "ip": ip
             })
@@ -461,7 +754,10 @@ def port_scan(ip):
 
             if result == 0:
 
-                print(Fore.GREEN + f"[OPEN] {port}")
+                print(
+                    Fore.GREEN +
+                    f"[OPEN] {port}"
+                )
 
                 open_ports.append(port)
 
@@ -542,7 +838,10 @@ async def main():
 
 """)
 
-        choice = input(Fore.YELLOW + "BGENG WATCHER > ")
+        choice = input(
+            Fore.YELLOW +
+            "BGENG WATCHER > "
+        )
 
         if choice == "1":
 
@@ -552,7 +851,9 @@ async def main():
 
         elif choice == "2":
 
-            number = input("Phone Number: ")
+            number = input(
+                "Phone Number (+62xxx): "
+            )
 
             phone_intel(number)
 
